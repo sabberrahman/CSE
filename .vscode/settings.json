@@ -1,4 +1,84 @@
+// {
+//     "C_Cpp.errorSquiggles": "disabled",
+//     "C_Cpp.default.compilerPath": "",
+//     "files.associations": {
+//         "*.html": "html",
+//         "array": "cpp",
+//         "atomic": "cpp",
+//         "*.tcc": "cpp",
+//         "cctype": "cpp",
+//         "clocale": "cpp",
+//         "cmath": "cpp",
+//         "cstdarg": "cpp",
+//         "cstddef": "cpp",
+//         "cstdint": "cpp",
+//         "cstdio": "cpp",
+//         "cstdlib": "cpp",
+//         "cwchar": "cpp",
+//         "cwctype": "cpp",
+//         "deque": "cpp",
+//         "unordered_map": "cpp",
+//         "vector": "cpp",
+//         "exception": "cpp",
+//         "algorithm": "cpp",
+//         "functional": "cpp",
+//         "iterator": "cpp",
+//         "memory": "cpp",
+//         "memory_resource": "cpp",
+//         "numeric": "cpp",
+//         "random": "cpp",
+//         "string": "cpp",
+//         "system_error": "cpp",
+//         "tuple": "cpp",
+//         "type_traits": "cpp",
+//         "utility": "cpp",
+//         "fstream": "cpp",
+//         "initializer_list": "cpp",
+//         "iosfwd": "cpp",
+//         "iostream": "cpp",
+//         "istream": "cpp",
+//         "limits": "cpp",
+//         "new": "cpp",
+//         "ostream": "cpp",
+//         "sstream": "cpp",
+//         "stdexcept": "cpp",
+//         "streambuf": "cpp",
+//         "typeinfo": "cpp"
+//     }
+// }
+
 {
-    "C_Cpp.errorSquiggles": "disabled",
-    "C_Cpp.default.compilerPath": ""
-}
+    "todohighlight.isEnable": true,
+    "todohighlight.isCaseSensitive": true,
+    "todohighlight.keywords": [
+        "DEBUG:",
+        "REVIEW:",
+        {
+            "text": "note:",
+            "color": "white",
+            "backgroundColor": "gray",
+            "overviewRulerColor": "grey"
+        },
+        {
+            "text": "problem:",
+            "color": "#000",
+            "isWholeLine": false,
+        },
+        {
+            "text": "imp:",
+            "color": "white",
+            "backgroundColor": "gray",
+            "isWholeLine": false,
+        },
+        {
+            "text": "todo:",
+            "color": "#000",
+            "isWholeLine": false,
+        },
+        {
+            "text": "break:",
+            "color": "#000",
+            "backgroundColor": "gray",
+            "isWholeLine": true,
+        },]
+    }
