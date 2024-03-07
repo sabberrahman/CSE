@@ -80,5 +80,7 @@
             "color": "#000",
             "backgroundColor": "gray",
             "isWholeLine": true,
-        },]
+        },
+    ],
+    "C_Cpp.errorSquiggles": "disabled"
     }
