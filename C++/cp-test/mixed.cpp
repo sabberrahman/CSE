@@ -383,4 +383,70 @@ int main() {
     return 0;
 }
 
+//266A
+#include <iostream>
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n; // Number of stones
+
+    string s;
+    cin >> s; // Colors of the stones
+
+    int damagedStones = 0;
+    for (int i = 1; i < n; ++i) {
+        if (s[i] == s[i - 1]) {
+            damagedStones++;
+        }
+    }
+
+    cout << damagedStones << "\n";
+
+    return 0;
+}
+
+//520A
+#include <iostream>
+#include <string>
+#include <cctype> // For isalpha()
+
+using namespace std;
+
+bool isPangram(const string& str) {
+    int alphabet[128] = {0}; // Use a larger array to accommodate more characters
+
+    for (char ch : str) {
+        // Convert all characters to lowercase for case-insensitive comparison
+        ch = tolower(ch);
+
+        // Check if the character is a valid letter
+        if (isalpha(ch)) {
+            alphabet[ch]++; // Update the count for the corresponding character
+        }
+    }
+
+    // Check if all letters (with at least one occurrence) have a count of at least 1
+    for (int count : alphabet) {
+        if (count > 0) { // Consider letters with at least one occurrence
+            return false; // Not a pangram if any letter appears more than once
+        }
+    }
+
+    return true; // It's a pangram if only unique letters appear (all counts are zero)
+}
+
+int main() {
+    string str;
+    getline(cin, str);
+
+    if (isPangram(str)) {
+        cout << "YES" << endl;
+    } else {
+        cout << "NO" << endl;
+    }
+
+    return 0;
+}
+
 //
