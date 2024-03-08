@@ -1,4 +1,4 @@
-# My CSE Study Hub ✨
+## My CSE Study Hub ✨
 ### This repository is a collection of resources to help me excel in my Computer Science studies. Here you'll find:
 
 🐱‍👤**Lecture notes**: Organized by course for easy access. <br>
