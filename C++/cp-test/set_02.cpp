@@ -449,4 +449,153 @@ int main() {
     return 0;
 }
 
-//
+//1927A
+#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int t;
+    cin >> t; // Number of test cases
+
+    while (t--) {
+        int n;
+        cin >> n; // Length of the strip
+
+        string s;
+        cin >> s; // Colors of the cells
+
+        vector<int> blackIndices; // Indices of black cells
+
+        for (int i = 0; i < n; ++i) {
+            if (s[i] == 'B') {
+                blackIndices.push_back(i);
+            }
+        }
+
+        // Calculate the answer
+        if (blackIndices.empty()) {
+            cout << "0\n"; // No black cells
+        } else {
+            int x  = blackIndices.size();
+            cout << x << "\n";
+        }
+    }
+
+    return 0;
+}
+
+//1303A
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+int minZerosToErase(const string& s) {
+  int n = s.size();
+  int consecutiveZeros = 0; // Count of consecutive zeros seen after a 1
+
+  for (char ch : s) {
+    if (ch == '1') {
+      consecutiveZeros = 0; // Reset zero count when encountering a 1
+    } else {
+      if (consecutiveZeros > 0) {
+        return n; // Found non-contiguous 1's, all zeros need to be erased
+      }
+      consecutiveZeros++; // Increment zero count if not already erased
+    }
+  }
+
+  // If no non-contiguous 1's found, return 0
+  return 0;
+}
+
+int main() {
+  int t;
+  cin >> t;
+
+  while (t--) {
+    string s;
+    cin >> s;
+
+    cout << minZerosToErase(s) << endl;
+  }
+
+  return 0;
+}
+
+//1800A
+#include <iostream>
+#include <string>
+#include <cctype> // For tolower()
+
+using namespace std;
+
+bool isCatMeowing(const string& s) {
+    int n = s.size();
+
+    // Early return for empty string or invalid length
+    if (n == 0 || n > 50) {
+        return false;
+    }
+
+    int mCount = 0, eCount = 0, oCount = 0, wCount = 0;
+    bool hasSeenM = false; // Flag to check if 'm' or 'M' has been encountered
+
+    for (char ch : s) {
+        char lowerCh = tolower(ch); // Convert to lowercase for case-insensitive check
+
+        switch (lowerCh) {
+            case 'm':
+                if (hasSeenM) {
+                    return false; // Multiple 'm' or 'M' not allowed
+                }
+                mCount++;
+                hasSeenM = true;
+                break;
+            case 'e':
+                if (mCount == 0 || hasSeenM) {
+                    return false; // 'e' must follow 'm' or 'M'
+                }
+                eCount++;
+                break;
+            case 'o':
+                if (eCount == 0 || !hasSeenM) {
+                    return false; // 'o' must follow 'e' and 'm' or 'M'
+                }
+                oCount++;
+                break;
+            case 'w':
+                if (oCount == 0 || !hasSeenM) {
+                    return false; // 'w' must follow 'o' and 'e' and 'm' or 'M'
+                }
+                wCount++;
+                break;
+            default:
+                return false; // Any other character is invalid
+        }
+    }
+
+    // Check if all counts are non-zero (meaning all characters appeared)
+    return mCount > 0 && eCount > 0 && oCount > 0 && wCount > 0;
+}
+
+int main() {
+    int t;
+    cin >> t;
+
+    while (t--) {
+        int n;
+        string s;
+        cin >> n >> s;
+
+        if (isCatMeowing(s)) {
+            cout << "YES\n";
+        } else {
+            cout << "NO\n";
+        }
+    }
+
+    return 0;
+}
+//208A
