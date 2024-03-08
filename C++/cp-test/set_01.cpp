@@ -67,4 +67,191 @@ int main() {
   return 0;
 }
 
+//25 A
+#include <iostream>
+
+using namespace std;
+
+int main() {
+  int n;
+  cin >> n;
+
+  int numbers[n];
+  for (int i = 0; i < n; i++) {
+    cin >> numbers[i];
+  }
+
+  // Check if the first number is even (no remainder when divided by 2)
+  bool isFirstEven = (numbers[0] % 2 == 0);
+
+  // Loop through remaining numbers, starting from the second
+  for (int i = 1; i < n; i++) {
+    // If current number's evenness differs from the first, it's the different one
+    if (numbers[i] % 2 != isFirstEven) {
+      cout << "The number that differs in evenness is at index " << i + 1 << "." << endl;
+      return 0; // Exit after finding the different number
+    }
+  }
+
+  // If loop completes, all numbers have the same evenness
+  cout << "All numbers have the same evenness." << endl;
+
+  return 0;
+}
+
+//580A
+#include <iostream>
+
+using namespace std;
+
+int main() {
+  int n;
+  cin >> n;
+
+  int income[n];
+  for (int i = 0; i < n; i++) {
+    cin >> income[i];
+  }
+
+  // Track current and maximum subsegment lengths
+  int currentLength = 1;
+  int maxLength = 1;
+
+  for (int i = 1; i < n; i++) {
+    // Check if current day's income is non-decreasing
+    if (income[i] >= income[i - 1]) {
+      currentLength++;
+    } else {
+      // Update maxLength if current subsegment is longer
+      maxLength = max(maxLength, currentLength);
+      // Reset currentLength for a new subsegment
+      currentLength = 1;
+    }
+  }
+
+  // Update maxLength in case the last subsegment is longest
+  maxLength = max(maxLength, currentLength);
+
+  cout << maxLength << endl;
+
+  return 0;
+}
+
+//233
+#include <iostream>
+
+using namespace std;
+
+int main() {
+  int n;
+  cin >> n;
+
+  // Special case: no perfect permutation for n = 1
+  if (n == 1) {
+    cout << -1 << endl;
+    return 0;
+  }
+
+  int permutation[n];
+  for (int i = 0; i < n; i++) {
+    permutation[i] = (i + 1) * i;
+  }
+
+  // Print the perfect permutation
+  for (int i = 0; i < n; i++) {
+    cout << permutation[i] << " ";
+  }
+  cout << endl;
+
+  return 0;
+}
+
+// MATH SECTIONS 
+//1A
+#include <iostream>
+
+using namespace std;
+
+int main() {
+  int n, m, a;
+  cin >> n >> m >> a;
+
+  // Flagstones needed in a row (without rounding)
+  int rows = n / a;
+  // Flagstones needed in a column (without rounding)
+  int columns = m / a;
+
+  // Extra space left uncovered in rows
+  int extraRowSpace = n % a;
+
+  // Extra space left uncovered in columns
+  int extraColSpace = m % a;
+
+  // Total number of flagstones (without considering extra space)
+  int totalFlagstones = rows * columns;
+
+  // If there's extra space in a row, we need one more flagstone
+  if (extraRowSpace > 0) {
+    rows++;
+  }
+
+  // If there's extra space in a column, we need one more flagstone
+  if (extraColSpace > 0) {
+    columns++;
+  }
+
+  // Update total flagstones considering extra space
+  totalFlagstones = rows * columns;
+
+  cout << totalFlagstones << endl;
+
+  return 0;
+}
+
+//1873B
+#include <iostream>
+
+using namespace std;
+
+int main() {
+  int t;
+  cin >> t; // Number of test cases
+
+  while (t--) {
+    int n;
+    cin >> n; // Number of digits
+
+    int a[n];
+    for (int i = 0; i < n; i++) {
+      cin >> a[i];
+    }
+
+    // Calculate original product
+    int product = 1;
+    for (int i = 0; i < n; i++) {
+      product *= a[i];
+    }
+
+    // Find the best digit to increase (and its index)
+    int best_digit_index = -1;
+    for (int i = 0; i < n; i++) {
+      int temp_product = product * (a[i] + 1);
+      if (temp_product > product) {
+        product = temp_product;
+        best_digit_index = i;
+      }
+    }
+
+    // Increase the best digit by 1 (optional, for verification)
+    if (best_digit_index != -1) {
+      a[best_digit_index]++;
+    }
+
+    // Return the maximum product
+    cout << product << endl;
+  }
+
+  return 0;
+}
+
 //
