@@ -41,3 +41,32 @@ int main() {
     cout << "NO" << endl;
     return 0;
 }
+
+// or --Change Counter: If they're not equal, we increment a changes counter.
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+bool canMakePalindrome(const string& s) {
+  int changes = 0;
+  for (int i = 0; i < s.length() / 2; i++) {
+    if (s[i] != s[s.length() - 1 - i]) {
+      changes++;
+    }
+  }
+  return changes <= 1;
+}
+
+int main() {
+  string s;
+  cin >> s;
+
+  if (canMakePalindrome(s)) {
+    cout << "YES" << endl;
+  } else {
+    cout << "NO" << endl;
+  }
+
+  return 0;
+}

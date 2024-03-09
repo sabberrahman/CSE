@@ -1,0 +1,96 @@
+@font-face {
+    font-family: 'Lato';
+    src: url('../fonts/Lato-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+  
+  @font-face {
+    font-family: 'Roboto Mono';
+    src: url('../fonts/RobotoMono-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+
+body {
+    font-family: 'Roboto Mono', sans-serif;
+    letter-spacing: 5%;
+    opacity: 90%;
+    margin: 0;
+    padding: 0;
+    background-image: radial-gradient( circle 815px at 23.4% -21.8%,  rgba(9,29,85,1) 0.2%, rgba(0,0,0,1) 100.2% );
+    color: #cfcdcd;
+  }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+  }
+  
+  .logo {
+    font-size: 2em;
+    font-weight: bold;
+  }
+  
+  .nav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .nav a {
+    text-decoration: none;
+    color: #cfcdcd;
+    margin-right: 20px;
+  }
+  
+  .main {
+    padding: 50px;
+  }
+  
+  .section {
+    display: flex;
+    align-items: center; 
+    margin-bottom: 50px;
+  }
+
+  .profile-content {
+    flex: 1; 
+    padding: 20px;
+  }
+  
+  .section h2 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+  }
+  img {
+    cursor: pointer;
+    width: 200px; 
+    height: 200px; 
+  }
+
+  .tech-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .tech-list li {
+    display: inline-block;
+    margin-right: 15px;
+  }
+  
+  .footer {
+    text-align: center;
+    padding: 20px;
+  }
+  
+.tech-card {
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 2px 2px 4px rgba(43, 74, 216, 0.677);
+        margin: 10px;
+        text-align: center;
+ }
