@@ -1,0 +1,149 @@
+---
+title: "Row Orientation"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+runtime: shiny
+---
+
+
+
+```{r include=FALSE}
+library(shiny)
+library(leaflet.extras2)
+library(leaflet.extras)
+library(leaflet)
+library(DT)
+library(dplyr)
+
+```
+
+
+
+
+
+
+Dashbaord 
+==================================================================== 
+
+input{.sidebar}
+-----------------------------
+
+hello world    
+-option 1    
+-option 1    
+-option 1    
+-option 1 
+```{r}
+
+```
+
+
+Row
+----------------------------
+
+### chart1 
+
+```{r}
+
+```
+
+### chart2
+```{r}
+
+```
+
+Row 
+-----------------------------
+
+### chart3
+
+```{r}
+
+```
+
+Row 
+--------------------------
+
+### chart 4 
+
+```{r}
+
+```
+
+Row
+-----------------------------
+
+### chart 5
+```{r}
+
+```
+
+### chart 6
+```{r}
+
+```
+
+### chart 7
+```{r}
+
+```
+
+
+Row {data-height=600}
+-------------------------
+
+### one row  
+```{r}
+
+```
+
+
+Row {data-height=800} 
+---------------------------
+
+### big row  {data-width=600}
+```{r}
+
+```
+
+Column {data-width=400, data-height=600}
+----------------------
+
+### small row 
+```{r}
+
+```
+
+### small row 
+```{r}
+
+```
+
+
+
+Village profiling 
+==================================================================== 
+profiling 
+
+
+Lama Map 
+==================================================================== 
+lama village
+
+### leaflet map 
+
+```{r}
+renderLeaflet({
+  leaflet() %>%
+    addTiles(urlTemplate = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png") %>%
+    setView(lng = 21.456789, lat = 12.45678, zoom = 8)
+})
+
+```
+
+Malaria report  
+==================================================================== 
+
+malaria report 
+

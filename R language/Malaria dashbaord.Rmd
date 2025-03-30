@@ -1,0 +1,841 @@
+---
+title: "Row Orientation"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+runtime: shiny
+---
+
+
+
+
+```{r global}
+library(shiny)
+library(shinyWidgets)
+library(leaflet)
+library(leaflet.providers)
+library(DT)
+library(sf)
+library(flexdashboard)
+library(readxl)
+library(dplyr)
+library(readr)
+library(randomForest)
+library(spdep)
+library(INLA)
+library(writexl)
+library(zoo)
+library(readxl)
+library(sp)
+
+
+village_lama_SHP <- st_read("Village data for lama Upazila/Village_data_for_lama.shp")
+union_boundary <- st_read("Village data for lama Upazila/Union_boundary_for_lama.shp")
+ward_boundary <- st_read("Village data for lama Upazila/Ward_boundary_for_lama.shp")
+
+
+saveRDS(village_lama_SHP, "RDS_data/village.rds")
+saveRDS(union_boundary, "RDS_data/union.rds")
+saveRDS(ward_boundary, "RDS_data/ward.rds")
+
+
+village <- readRDS("RDS_data/village.rds") %>% st_as_sf() %>% st_transform(crs = 4326)
+union <- readRDS("RDS_data/union.rds")%>% st_as_sf() %>% st_transform(crs = 4326)
+ward <- readRDS("RDS_data/ward.rds")%>% st_as_sf() %>% st_transform(crs = 4326)
+point <- readRDS("RDS_data/RDS_dataVillage_Data_LAMA_points.Rds")
+
+
+
+data_name <- village %>% select(MOU_N_E,NET_ACS,TOT_POP)
+
+
+
+data <- read_excel("Excel/RDT_BSE_Data_Collection-Bandarban_District_-_all_versions_-_English_en_-_2025-02-11-11-31-40.xlsx")
+gajalia_csv <- read_excel("Excel/final.xlsx")
+data$`Severe Malaria`[is.na(data$`Severe Malaria`)] <- "No Data"
+
+#countOf <-sum(data$`Type of disease`=="Plasmodium vivax")
+#malecc <-sum(data$Gender=="Male")
+
+## -------------------------model-----------------------------------
+
+training_files <- c(
+  "new_data/combined_2020_with_API.xlsx",
+  "new_data/combined_2021_with_API.xlsx",
+  "new_data/combined_2022_with_API.xlsx",
+  "new_data/combined_2023_with_API.xlsx"
+)
+
+actual_cases <- read_excel("new_data/Actual Cases_with_API.xlsx")%>%
+  mutate(union = as.factor(union), month = as.factor(month))
+
+actual_cases_predict <- read_excel("new_data/Actual Cases_with_API.xlsx")
+
+prediction_files <- c("new_data/combined_2024.xlsx")
+
+# shp file 
+shapefile <- st_read("Lama_With_Union_V2/Lama_With_Union_V2.shp")
+
+process_data_file <- function(file_path) {
+  data <- read_excel(file_path) %>%
+    rename_with(~ gsub("temperature", "temp", .x)) %>%
+    rename_with(~ gsub("rainfall", "rain", .x)) %>%
+    rename_with(~ gsub("humidity", "hum", .x)) %>%
+    mutate(across(where(is.numeric), ~ na.approx(.x, rule = 2))) %>%  # Interpolate missing values
+    mutate(
+      union = as.factor(union), # factors --better for modeling and treating it category 
+      month = as.factor(month),
+      sin_month = sin(2 * pi * as.numeric(month) / 12),
+      cos_month = cos(2 * pi * as.numeric(month) / 12)
+    )
+  
+  return(data)
+}
+
+# Load and combine training data- traing_files all file will go thru process func
+training_data <- lapply(training_files, process_data_file) %>% bind_rows()
+prediction_data <- lapply(prediction_files, process_data_file) %>% bind_rows()
+training_data$union_id <- as.numeric(training_data$union)
+
+training_data <- training_data %>%
+  left_join(actual_cases, by = c("union", "month"))
+
+#--------------------end of data process---------------------------------------- 
+
+
+neighbors <- st_touches(shapefile) #identifies which (e.g., polygons) touch each other
+adjacency_matrix <- matrix(0, nrow = length(neighbors), ncol = length(neighbors))
+for (i in 1:length(neighbors)) {
+  adjacency_matrix[i, neighbors[[i]]] <- 1
+}
+
+#2nd way of doing adjacency 
+#neighbors_list <- poly2nb(shapefile)
+#adjacency_matrix_sp <- nb2mat(neighbors_list, style = "B")  # Binary matrix
+
+
+#--------------random forest model---------------
+
+rf_formula <-actual_API ~ 
+  temp_lag0 + rain_lag0 + hum_lag0 +
+  temp_lag1 + rain_lag1 + hum_lag1 +
+  temp_lag2 + rain_lag2 + hum_lag2 +
+  temp_lag3 + rain_lag3 + hum_lag3 +
+  sin_month + cos_month +
+  hum_lag0 + rain_lag0 + rain_lag1 + hum_lag1 + temp_lag2 + rain_lag2 + hum_lag2 
+
+rf_model <- randomForest(rf_formula,
+                         data = training_data, 
+                         ntree = 1500,  # Increased trees
+                         mtry = sqrt(ncol(training_data) - 2), # More dynamic feature selection
+                         nodesize = 3,  # Reduce nodesize for better splits
+                         importance = TRUE)
+
+# ----------------------lNLA model -------------
+
+optimized_formula <- API ~ # API~ is what we are trying to prediect
+  temp_lag0 + rain_lag0 + hum_lag0 +
+  temp_lag1 + rain_lag1 + hum_lag1 +
+  temp_lag2 + rain_lag2 + hum_lag2 +
+  temp_lag3 + rain_lag3 + hum_lag3 +
+  sin_month + cos_month +
+  hum_lag0 + rain_lag0 +  rain_lag1 + hum_lag1 + temp_lag2 + rain_lag2 + hum_lag2 +
+  f(union_id, model = "bym2", graph = adjacency_matrix) + f(month, model = "ar1")
+
+# Train Bayesian Negative Binomial Regression Model using INLA
+inla_model <- inla(
+  optimized_formula, 
+  family = "gaussian", 
+  data = training_data,
+  control.predictor = list(compute = TRUE),
+  control.compute = list(dic = TRUE, waic = TRUE, cpo = TRUE),
+  verbose = TRUE  # Enable verbose output for debugging
+)
+
+
+prediction_data$predicted_RF <- predict(rf_model, prediction_data)
+prediction_data$predicted_INLA <- inla_model$summary.fitted.values$mean[1:nrow(prediction_data)]
+
+#model blending -- 80% from lnla and 20% from RF model
+prediction_data$final_pred <- (0.8 * prediction_data$predicted_INLA) + (0.2 * prediction_data$predicted_RF)
+
+prediction_data <- prediction_data %>% 
+  left_join(actual_cases, by = c("union", "month"))
+
+finalresult <- prediction_data %>%
+  group_by(union) %>%
+  summarise(
+    sum_predicted_API = sum(final_pred, na.rm = TRUE),
+    sum_actual_API = sum(actual_API, na.rm = TRUE),
+    MAE = mean(abs(actual_API - final_pred), na.rm = TRUE),
+    RMSE = sqrt(mean((actual_API - final_pred)^2, na.rm = TRUE)),
+    R_squared = cor(actual_API, final_pred, use = "complete.obs")^2
+  )
+
+write_xlsx(finalresult,"new_data/prediction_from_model.xlsx")
+
+predictionAPI <- read_excel("new_data/prediction_from_model.xlsx")
+
+predictionAPI <- predictionAPI %>%
+  mutate(UNI_MUN_N_  = case_when(
+    union == "Fanshiakhali"  ~ "Fansiakhali",
+    union == "Faitong"       ~ "Faitang",
+    union == "Pouro"         ~ "Lama Pourasabha",
+    union == "Lama"          ~ "Lama Sadar",
+    TRUE ~ union  # Keep other values unchanged
+  )) %>% select(-union)
+
+marge_data <- union %>%
+  left_join(predictionAPI,by = c("UNI_MUN_N_"))
+
+
+
+```
+
+
+
+
+Dashbaord 
+==================================================================== 
+
+input{.sidebar}
+-----------------------------
+
+```{r}
+ renderUI({
+    
+    pickerInput(
+      inputId  = "upzila",
+      label    = "Upozila:",
+      choices  = c("Lama"),
+      selected = "Lama",
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = FALSE
+    )
+  })
+  
+ renderUI({
+    
+    pickerInput(
+      inputId  = "unionM",
+      label    = "Union:",
+      choices  = unique(sort(data$Union)),
+      selected = sort(unique(data$Union)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+  renderUI({
+  
+    newDataSubset <- data[data$Union %in% input$unionM,]
+    
+    print(paste("warddd:", nrow(newDataSubset)))
+    
+    pickerInput(
+      inputId  = "wardM",
+      label    = "Ward:",
+      choices  = unique(sort(newDataSubset$Ward)),
+      selected = sort(unique(newDataSubset$Ward)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+   renderUI({
+   
+    newDataSubset <- data[data$Union %in% input$unionM & data$Ward %in% input$wardM,]
+    
+    print(paste("village:", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "villageM",
+      label    = "village:",
+      choices  = unique(sort(newDataSubset$Village)),
+      selected = sort(unique(newDataSubset$Village)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+  
+   renderUI({
+    
+   
+    newDataSubset <- data[data$Union %in% input$unionM & data$Ward %in% input$wardM 
+                          & data$Village %in% input$villageM,]
+    print(paste("gender:", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "gender",
+      label    = "Gender:",
+      choices  = unique(sort(newDataSubset$Gender)),
+      selected = sort(unique(newDataSubset$Gender)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+   renderUI({
+    
+   
+    
+    newDataSubset <- data[data$Union %in% input$unionM & data$Ward %in% input$wardM 
+                          & data$Village %in% input$villageM 
+                          & data$Gender %in% input$gender,]
+    
+    print(paste("institution:", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "institution",
+      label    = "Institution:",
+      choices  = unique(sort(newDataSubset$`Name Of The Institution`)),
+      selected = sort(unique(newDataSubset$`Name Of The Institution`)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+  
+   renderUI({
+   
+    
+    newDataSubset <- data[data$Union %in% input$unionM & data$Ward %in% input$wardM 
+                          & data$Village %in% input$villageM 
+                          & data$Gender %in% input$gender 
+                          &data$`Name Of The Institution` %in% input$institution,]
+    
+    print(paste("dataCollector:", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "data_collector",
+      label    = "Data collector position:",
+      choices  = unique(sort(newDataSubset$`Data collector's position`)),
+      selected = sort(unique(newDataSubset$`Data collector's position`)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+renderUI({
+    
+
+    newDataSubset <- data[data$Union %in% input$unionM & data$Ward %in% input$wardM 
+                          & data$Village %in% input$villageM 
+                          & data$Gender %in% input$gender 
+                          &data$`Name Of The Institution` %in% input$institution
+                          &data$`Data collector's position` %in% input$data_collector,]
+    
+    print(paste("typeOfDisease:", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "typeOfDisease",
+      label    = "Type of disease:",
+      choices  = unique(sort(newDataSubset$`Type of disease`)),
+      selected = sort(unique(newDataSubset$`Type of disease`)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+  
+   renderUI({
+   
+    
+    newDataSubset <- data[data$Union %in% input$unionM & 
+                            data$Ward %in% input$wardM & 
+                            data$Village %in% input$villageM & 
+                            data$Gender %in% input$gender & 
+                            data$`Name Of The Institution` %in% input$institution & 
+                            data$`Data collector's position` %in% input$data_collector & 
+                            data$`Type of disease` %in% input$typeOfDisease, ]
+    
+    print(paste("AGe:", nrow(newDataSubset)))
+    
+  
+    minAge <- if(length(newDataSubset$Age) > 0) min(newDataSubset$Age, na.rm = TRUE) else 0
+    maxAge <- if(length(newDataSubset$Age) > 0) max(newDataSubset$Age, na.rm = TRUE) else 100
+    print(nrow(newDataSubset))
+    
+    sliderInput(
+      inputId = "age",
+      label = "Select Patient Age Range:",
+      min = minAge,
+      max = maxAge,
+      value = c(minAge, maxAge),  
+      step = 1  
+    )
+  })
+  renderUI({
+    
+
+    
+    newDataSubset <- data[data$Union %in% input$unionM & 
+                            data$Ward %in% input$wardM & 
+                            data$Village %in% input$villageM & 
+                            data$Gender %in% input$gender & 
+                            data$`Name Of The Institution` %in% input$institution & 
+                            data$`Data collector's position` %in% input$data_collector & 
+                            data$`Type of disease` %in% input$typeOfDisease&
+                            data$Age >= input$age[1]&data$Age <= input$age[2], ]
+    
+    print(paste("Weight:", nrow(newDataSubset)))
+    
+    
+    minima <- if(length(newDataSubset$Weight) > 0) min(newDataSubset$Weight, na.rm = TRUE) else 0
+    maxima <- if(length(newDataSubset$Weight) > 0) max(newDataSubset$Weight, na.rm = TRUE) else 100
+    
+    
+    sliderInput(
+      inputId = "weight",
+      label = "Select Patient weight Range:",
+      min = minima,
+      max = maxima,
+      value = c(minima, maxima),  
+      step = 1  
+    )
+  })
+  
+ renderUI({
+   
+    newDataSubset <- data[data$Union %in% input$unionM & 
+                            data$Ward %in% input$wardM & 
+                            data$Village %in% input$villageM & 
+                            data$Gender %in% input$gender & 
+                            data$`Name Of The Institution` %in% input$institution & 
+                            data$`Data collector's position` %in% input$data_collector & 
+                            data$`Type of disease` %in% input$typeOfDisease&
+                            data$Age >= input$age[1]&data$Age <= input$age[2]&
+                            data$Weight >= input$weight[1]&data$Weight <= input$weight[2], ]
+    
+    print(paste("occupation:", nrow(newDataSubset)))
+    
+    pickerInput(
+      inputId  = "occupation",
+      label    = "Patient occupation:",
+      choices  = unique(sort(newDataSubset$Occupation)),
+      selected = sort(unique(newDataSubset$Occupation)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+    
+  })
+  
+  
+ renderUI({
+   
+    
+    newDataSubset <- data[data$Union %in% input$unionM & 
+                            data$Ward %in% input$wardM & 
+                            data$Village %in% input$villageM & 
+                            data$Gender %in% input$gender & 
+                            data$`Name Of The Institution` %in% input$institution & 
+                            data$`Data collector's position` %in% input$data_collector & 
+                            data$`Type of disease` %in% input$typeOfDisease&
+                            data$Age >= input$age[1]&data$Age <= input$age[2]&
+                            data$Weight >= input$weight[1]&data$Weight <= input$weight[2]&
+                            data$Occupation %in% input$occupation, ]
+    
+    choiceNselected <- unique(sort(newDataSubset$`Have you/any member of your household suffered from malaria in the last year?`))
+    print(paste("Have any :", nrow(newDataSubset)))
+    pickerInput(
+      inputId  = "haveany",
+      label    = "Did anyone in their household have malaria last year?",
+      choices  = choiceNselected,
+      selected = choiceNselected,
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+    
+  })
+  
+
+```
+
+
+Row
+----------------------------
+
+### chart1 
+
+```{r}
+renderText({
+    data <- ValueBoxFillerDataset()
+    HTML(paste0(
+      "<div style='background: #242525; color:#595b5f; padding: 15px; border-radius: 0.8rem; margin-top: 8px; margin-bottom:8px; 
+                   text-align: center; width: 200px; height: 120px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);'>",
+      "<p style='margin: 0; font-size: 16px; opacity: 60%;'>Total Cases</p>",
+      "<h3 style='color: #066e29;
+  font-size: 4.5rem;
+  font-weight: 600;
+  line-height: 1.5rem;'>", nrow(data), "</h3>",
+      "</div>"
+    )) })
+    
+```
+
+### chart2
+```{r}
+renderText({
+    data <- ValueBoxFillerDataset()
+    
+    # Replace NA values with "Unknown"
+    data$`Type of disease` <- ifelse(is.na(data$`Type of disease`), "Unknown", data$`Type of disease`)
+    
+    vivax <- sum(data$`Type of disease` == "Plasmodium vivax", na.rm = TRUE)
+    falciparum <- sum(data$`Type of disease` == "Plasmodium falciparum", na.rm = TRUE)
+    mixed <- sum(data$`Type of disease` == "Mixed", na.rm = TRUE)
+    
+    HTML(paste0(
+      "<div style='background: #242525; color:#595b5f; padding: 15px; border-radius: 0.8rem; margin-top: 8px; margin-bottom:8px; 
+                   text-align: center; width: 200px; height: 120px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);'>",
+      "<p style='margin: 0; font-size: 16px; opacity: 60%; margin-top:-4px;'>Total Cases by Gender</p>",
+      "<div style='text-align: left; margin-left:2rem; margin-top: -1px;'>",
+      "<span style='font-size: 14px; opacity:90%;'><b>P.vivax:</b> </span><span style='font-size: 18px; color: #5361CA !important;'>",vivax,"</span><br>",
+      "<span style='font-size: 14px; opacity:90%;'><b>P.falciparum:</b> </span><span style='font-size: 18px; color: #d9534f !important;'>",falciparum,"</span><br>",
+      "<span style='font-size: 14px; opacity:90%;'><b>Mixed:</b> </span><span style='font-size: 18px; color: #f0ad4e !important;'>",mixed,"</span><br>",
+      "</div>",
+      "</div>"
+    ))
+  })
+
+
+```
+
+### chart3
+
+```{r}
+renderText({
+    data <- ValueBoxFillerDataset()
+    
+    # Replace NA values with "Unknown"
+    data$Gender <- ifelse(is.na(data$Gender), "Unknown", data$Gender)
+    
+    male <- sum(data$Gender == "Male", na.rm = TRUE)
+    female <- sum(data$Gender == "Female", na.rm = TRUE)
+    
+    HTML(paste0(
+      "<div style='background: #242525; color:#595b5f; padding: 15px; border-radius: 0.8rem; margin-top: 8px; margin-bottom:8px; 
+                   text-align: center; width: 200px; height: 120px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);'>",
+      "<p style='margin: 0; font-size: 16px; opacity: 60%; margin-top:-4px;'>Total Cases by Gender</p>",
+      "<div style='text-align: left; margin-left:2rem;'>",
+      "<span style='font-size: 14px; opacity:90%; margin-top:-4pxs'><b>Male:</b> </span><span style='font-size: 18px; color: #5361CA !important;'>",male,"</span><br>",
+      "<span style='font-size: 14px; opacity:90%;'><b>Female:</b> </span><span style='font-size: 18px; color: #d9534f !important;'>",female,"</span><br>",
+      "</div>",
+      "</div>"
+    ))
+  })
+```
+
+
+### chart 4 
+
+```{r}
+renderUI({
+    top3 <- Top3Villages()
+    
+    HTML(paste0(
+      "<div style='background: #242525; color:#595b5f; padding: 15px; border-radius: 0.8rem; margin-top: 8px; margin-bottom:8px; 
+                 text-align: center; width: 250px; height: auto; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);'>",
+      "<p style='margin: 0; font-size: 16px; opacity: 60%;'>most affacted age group</p>",
+      "<div style='text-align: left; '>",
+      if (nrow(top3) >= 1) paste0("<span style='font-size: 14px; opacity:90%;'><b> Age: </b> ", top3$Age[1], " -> <span style='color: #5361CA;'>", top3$Total_Cases[1], " cases</span></span><br>") else "",
+      if (nrow(top3) >= 2) paste0("<span style='font-size: 14px; opacity:90%;'><b> Age: </b> ", top3$Age[2], " -> <span style='color: #d9534f;'>", top3$Total_Cases[2], " cases</span></span><br>") else "",
+      if (nrow(top3) >= 3) paste0("<span style='font-size: 14px; opacity:90%;'><b> Age: </b> ", top3$Age[3], " -> <span style='color: #f0ad4e;'>", top3$Total_Cases[3], " cases</span></span><br>") else "",
+      "</div>",
+      "</div>"
+    ))
+  })
+```
+
+Row
+-----------------------------
+
+### chart 5
+```{r}
+renderDT({
+    
+    dataForDT <- data[data$Union %in% input$unionM & 
+                        data$Ward %in% input$wardM & 
+                        data$Village %in% input$villageM & 
+                        data$Gender %in% input$gender & 
+                        data$`Name Of The Institution` %in% input$institution & 
+                        data$`Data collector's position` %in% input$data_collector & 
+                        data$`Type of disease` %in% input$typeOfDisease &
+                        data$Age >= input$age[1] & data$Age <= input$age[2] &
+                        data$Weight >= input$weight[1] & data$Weight <= input$weight[2] &
+                        data$Occupation %in% input$occupation, ]
+  
+    
+    
+    villageForDT <- dataForDT %>% select(-c(1,2,3,5,7,8,12,13,14))
+    
+    DT::datatable(villageForDT, options=list( 
+      scrollX = TRUE,  
+      autoWidth = TRUE,
+      pageLength = 10
+      ),class="compact table-striped")
+  })
+
+```
+
+
+
+
+Row {data-height=600}
+-------------------------
+
+### one row  
+```{r}
+
+```
+
+
+
+
+Village Map
+==================================================================== 
+
+input{.sidebar}
+-------------------------------
+```{r}
+ renderUI({
+    
+    pickerInput(
+      inputId  = "union",
+      label    = "Union:",
+      choices  = unique(sort(point$UNI_MUN_N_)),
+      selected = unique(point$UNI_MUN_N_),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+
+
+ renderUI({
+
+    data_available <- point[point$UNI_MUN_N_ %in% input$union, ]
+    
+    choiceNselected <-unique(sort(data_available$WAR_N_E))
+    pickerInput(
+      inputId  = "ward",
+      label    = "Ward:",
+      choices  = choiceNselected,
+      selected = choiceNselected,
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+  
+ renderUI({
+    
+    data_available <- point[point$UNI_MUN_N_ %in% input$union &
+                              point$WAR_N_E %in% input$ward, ]
+    
+    choiceNselected <-unique(sort(data_available$PAR_N_E))
+    
+    pickerInput(
+      inputId  = "village",
+      label    = "Village:",
+      choices  = choiceNselected,
+      selected = choiceNselected,
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+
+```
+
+
+Row
+------------------------
+```{r}
+  color_palette <- colorNumeric(
+    palette = c("#FFFFCC", "#FFEDA0", "#FED976", "#FEB24C", "#FD8D3C", "#FC4E2A", "#E31A1C"), 
+    domain = marge_data$sum_predicted_API
+  )
+
+renderLeaflet({ 
+    data_available <- point[point$UNI_MUN_N_ %in% input$union &
+                              point$WAR_N_E %in% input$ward&
+                              point$PAR_N_E %in% input$village, ]
+    
+    leaflet() %>%
+      addProviderTiles( 
+        providers$CartoDB.Positron,  
+        group = "CartoDB Positron") %>%
+      addProviderTiles( 
+        providers$Esri.WorldStreetMap,  
+        group = "Esri World Street") %>%
+      addProviderTiles( 
+        providers$OpenStreetMap.Mapnik,  
+        group = "OpenStreetMap") %>%
+      addPolygons(
+        data = ward,
+        fillColor = "#808080",
+        weight = 1,
+        opacity = 0.5,
+        color = "black",
+        fillOpacity = 0.4,
+        group = "ward"
+      ) %>%
+      addPolygons(
+        data = marge_data,
+        fillColor = ~color_palette(sum_predicted_API),  # Color based on predictionAPI
+        weight = 1,
+        opacity = 1,
+        color = "black",
+        fillOpacity = 0.4,
+        group = "union",
+        popup = ~paste0("<strong>Union: </strong> ", UNI_MUN_N_, "<br>",
+                        "<strong>Actual API: </strong> ", sum_actual_API, "<br>",
+                        "<strong>Prediction API: </strong> ", sum_predicted_API, "<br>"),
+        label = ~paste0("Union: ", UNI_MUN_N_, " | ",
+                        "Actual API: ", sum_actual_API, " | ",
+                        "Prediction API: ", sum_predicted_API),
+        labelOptions = labelOptions(
+          textsize = "12px",  # Adjust text size
+          direction = "auto",  # Auto-position the label
+          style = list("font-weight" = "bold")  # Add custom CSS styles
+        ),
+        highlightOptions = highlightOptions(
+          weight = 2,
+          color = "#666",
+          fillOpacity = 0.7,
+          bringToFront = TRUE
+        )
+      ) %>%
+      addLegend(
+        data = marge_data,
+        pal = color_palette, 
+        values = ~sum_predicted_API, 
+        title = "Prediction API", 
+        position = "bottomright"
+      ) %>%
+      addCircleMarkers(
+        data = data_available,clusterOptions = point,fillColor = "red", 
+        fillOpacity = 0.8, 
+        radius = 4, 
+        stroke = TRUE, 
+        weight = 2, 
+        color = "white", 
+        group = "Villages",
+        popup = ~paste0("<strong>Village:</strong> ", data_available$PAR_N_E, "<br>",
+                        "<strong>Population:</strong> ", data_available$TOT_POP, "<br>",
+                        "<strong>Ward:</strong> ", data_available$WAR_N_B, "<br>",
+                        "<strong>District:</strong> ", data_available$DIS_N_B, "<br>")) %>%
+      addLayersControl(
+        baseGroups = c("CartoDB Positron","Esri World Street", "OpenStreetMap"),  # Base maps
+        overlayGroups = c("ward","Villages"),  # Overlay layers
+        options = layersControlOptions(collapsed = FALSE) )
+  })
+```
+
+
+
+
+
+
+
+Climate data 
+==================================================================== 
+
+
+input{.sidebar}
+---------------------------
+
+```{r}
+
+ renderUI({
+    
+    pickerInput(
+      inputId  = "villageC",
+      label    = "Village:",
+      choices  = unique(sort(gajalia_csv$Name)),
+      selected = sort(unique(gajalia_csv$Name)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+
+  
+ renderUI({
+    newDataSubset <- gajalia_csv[gajalia_csv$Name %in% input$villageC,]
+      
+    pickerInput(
+      inputId  = "month",
+      label    = "Month:",
+      choices  = unique(sort(newDataSubset$Month)),
+      selected = sort(unique(newDataSubset$Month)),
+      options  = list(`actions-box` = TRUE, style = "btn btn-default btn-xs"),
+      multiple = TRUE
+    )
+  })
+ 
+  
+ renderUI({
+    
+    newDataSubset <- gajalia_csv[gajalia_csv$Name %in% input$villageC&
+                                   gajalia_csv$Month %in% input$month,]
+    
+    
+    minAge <- if(length(newDataSubset$Avg_Temperature_C) > 0) min(newDataSubset$Avg_Temperature_C, na.rm = TRUE) else 0
+    maxAge <- if(length(newDataSubset$Avg_Temperature_C) > 0) max(newDataSubset$Avg_Temperature_C, na.rm = TRUE) else 100
+    
+    
+    sliderInput(
+      inputId = "temp",
+      label = "Select avg temperature Range:",
+      min = minAge,
+      max = maxAge,
+      value = c(minAge, maxAge),  
+      step = 1  
+    )
+  })
+ 
+ 
+  
+  renderUI({
+    
+    newDataSubset <- gajalia_csv[gajalia_csv$Name %in% input$villageC&
+                                   gajalia_csv$Month %in% input$month&
+                                   gajalia_csv$Avg_Temperature_C >= input$temp[1]&gajalia_csv$Avg_Temperature_C <= input$temp[2],]
+    
+    
+    minAge <- if(length(newDataSubset$Avg_Humidity) > 0) min(newDataSubset$Avg_Humidity, na.rm = TRUE) else 0
+    maxAge <- if(length(newDataSubset$Avg_Humidity) > 0) max(newDataSubset$Avg_Humidity, na.rm = TRUE) else 100
+    
+    
+    sliderInput(
+      inputId = "humidity",
+      label = "Select avg humidity Range:",
+      min = minAge,
+      max = maxAge,
+      value = c(minAge, maxAge),  
+      step = 1  
+    )
+  })
+  
+
+```
+
+Row
+-------------------------------
+
+```{r}
+renderDT({
+    newDataSubset <- gajalia_csv[gajalia_csv$Name %in% input$villageC&
+                                   gajalia_csv$Month %in% input$month&
+                                   gajalia_csv$Avg_Temperature_C >= input$temp[1]&gajalia_csv$Avg_Temperature_C <= input$temp[2]&
+                                   gajalia_csv$Avg_Humidity >= input$humidity[1]&gajalia_csv$Avg_Humidity <= input$humidity[2],,]
+    
+    DT::datatable(newDataSubset, options=list( 
+      scrollX = TRUE,  
+      autoWidth = TRUE,
+      pageLength = 12, scrollY="500px"),width ="40%",class="compact")
+    })
+
+```
+
+
+
+Malaria report  
+==================================================================== 
+
+malaria report 
+
